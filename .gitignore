@@ -77,7 +77,11 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# dotenv
-.myenv
-.env
-.env.*
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+env.bak/
+venv.bak/
+myenv/
