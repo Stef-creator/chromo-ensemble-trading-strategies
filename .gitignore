@@ -85,3 +85,4 @@ env/
 env.bak/
 venv.bak/
 myenv/extra_tests_not_implemented.py
+myenv/
