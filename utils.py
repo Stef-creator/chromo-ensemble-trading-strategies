@@ -917,82 +917,56 @@ def calculate_additional_metrics(portfolio, trade_returns):
 
     # Compile metrics
     metrics = {
-        'Sortino Ratio': sortino,
-        'Calmar Ratio': calmar,
-        'Omega Ratio': omega,
-        'Max Drawdown': max_drawdown,
-        'Gain to Pain Ratio': gain_to_pain,
-        'Win Rate': win_rate,
-        'Profit Factor': profit_factor,
-        'Longest Win Streak': longest_win_streak,
-        'Longest Loss Streak': longest_loss_streak
+        'Sortino Ratio': float(sortino),
+        'Calmar Ratio': float(calmar),
+        'Omega Ratio': float(omega),
+        'Max Drawdown': float(max_drawdown),
+        'Gain to Pain Ratio': float(gain_to_pain),
+        'Win Rate': float(win_rate),
+        'Profit Factor': float(profit_factor),
+        'Longest Win Streak': float(longest_win_streak),
+        'Longest Loss Streak': float(longest_loss_streak)
     }
 
     return metrics
 
-def ensemble_comparison_summary(results_weighted_majority, results_kelly, results_prob_voting_uncon, results_prob_voting_con_min_pos, results_prob_voting_tot_con):
-    # Create a results list dynamically
-    results_list = [
-    {
-        'Ensemble Method': 'Weighted Majority Voting',
-        'Total Return': results_weighted_majority.get('total_return', None),
-        'Annualized Return': results_weighted_majority.get('annualized_return', None),
-        'Sharpe Ratio': results_weighted_majority.get('sharpe_ratio', None),
-        'Sortino Ratio': results_weighted_majority.get('sortino_ratio', None),
-        'Max Drawdown': results_weighted_majority.get('max_drawdown', None),
-        'Win Rate': results_weighted_majority.get('win_rate', None),
-        'Profit Factor': results_weighted_majority.get('profit_factor', None)
-    },
-    {
-        'Ensemble Method': 'Probabilistic Voting (Unconstrained)',
-        'Total Return': results_prob_voting_uncon.get('total_return', None),
-        'Annualized Return': results_prob_voting_uncon.get('annualized_return', None),
-        'Sharpe Ratio': results_prob_voting_uncon.get('sharpe_ratio', None),
-        'Sortino Ratio': results_prob_voting_uncon.get('sortino_ratio', None),
-        'Max Drawdown': results_prob_voting_uncon.get('max_drawdown', None),
-        'Win Rate': results_prob_voting_uncon.get('win_rate', None),
-        'Profit Factor': results_prob_voting_uncon.get('profit_factor', None)
-    },
-    {
-        'Ensemble Method': 'Probabilistic Voting (Constrained, Min Pos)',
-        'Total Return': results_prob_voting_con_min_pos.get('total_return', None),
-        'Annualized Return': results_prob_voting_con_min_pos.get('annualized_return', None),
-        'Sharpe Ratio': results_prob_voting_con_min_pos.get('sharpe_ratio', None),
-        'Sortino Ratio': results_prob_voting_con_min_pos.get('sortino_ratio', None),
-        'Max Drawdown': results_prob_voting_con_min_pos.get('max_drawdown', None),
-        'Win Rate': results_prob_voting_con_min_pos.get('win_rate', None),
-        'Profit Factor': results_prob_voting_con_min_pos.get('profit_factor', None)
-    },
-    {
-        'Ensemble Method': 'Probabilistic Voting (Totally Constrained)',
-        'Total Return': results_prob_voting_tot_con.get('total_return', None),
-        'Annualized Return': results_prob_voting_tot_con.get('annualized_return', None),
-        'Sharpe Ratio': results_prob_voting_tot_con.get('sharpe_ratio', None),
-        'Sortino Ratio': results_prob_voting_tot_con.get('sortino_ratio', None),
-        'Max Drawdown': results_prob_voting_tot_con.get('max_drawdown', None),
-        'Win Rate': results_prob_voting_tot_con.get('win_rate', None),
-        'Profit Factor': results_prob_voting_tot_con.get('profit_factor', None)
-    },
-    {
-        'Ensemble Method': 'Probabilistic Voting + Kelly Sizing',
-        'Total Return': results_kelly.get('total_return', None),
-        'Annualized Return': results_kelly.get('annualized_return', None),
-        'Sharpe Ratio': results_kelly.get('sharpe_ratio', None),
-        'Sortino Ratio': results_kelly.get('sortino_ratio', None),
-        'Max Drawdown': results_kelly.get('max_drawdown', None),
-        'Win Rate': results_kelly.get('win_rate', None),
-        'Profit Factor': results_kelly.get('profit_factor', None)
-    }
-    ]
+def ensemble_comparison_summary(metrics_weighted_majority, metrics_kelly, metrics_prob_voting_uncon, metrics_prob_voting_con_min_pos, metrics_prob_voting_tot_con, save_path=None):
+    def safe_get(d, key):
+        # Check both lowercase and title case variants
+        for variant in [key, key.title(), key.lower()]:
+            if variant in d:
+                return d[variant]
+        return np.nan
 
-    # Convert to DataFrame
+    results_list = []
+    for name, metrics in [
+        ('Weighted Majority Voting', metrics_weighted_majority),
+        ('Probabilistic Voting (Unconstrained)', metrics_prob_voting_uncon),
+        ('Probabilistic Voting (Constrained, Min Pos)', metrics_prob_voting_con_min_pos),
+        ('Probabilistic Voting (Totally Constrained)', metrics_prob_voting_tot_con),
+        ('Probabilistic Voting + Kelly Sizing', metrics_kelly),
+    ]:
+        results_list.append({
+            'Ensemble Method': name,
+            'Total Return': safe_get(metrics, 'total_return'),
+            'Annualized Return': safe_get(metrics, 'annualized_return'),
+            'Sharpe Ratio': safe_get(metrics, 'sharpe_ratio'),
+            'Sortino Ratio': safe_get(metrics, 'Sortino Ratio'),
+            'Max Drawdown': safe_get(metrics, 'max_drawdown'),
+            'Win Rate': safe_get(metrics, 'Win Rate'),
+            'Profit Factor': safe_get(metrics, 'Profit Factor')
+        })
+
     results_df = pd.DataFrame(results_list)
+    columns_order = ['Ensemble Method', 'Total Return', 'Annualized Return', 'Sharpe Ratio', 'Sortino Ratio', 'Max Drawdown', 'Win Rate', 'Profit Factor']
+    results_df = results_df[columns_order]
 
-    # Display neatly
     pd.set_option('display.precision', 4)
-    print("\n=== Ensemble Model Comparison ===")
+    print("\n=== Ensemble Model Comparison Summary ===")
     print(results_df.to_string(index=False))
 
+    if save_path:
+        results_df.to_csv(save_path, index=False)
+        print(f"Saved ensemble comparison table to {save_path}")
+
     return results_df
-
-
