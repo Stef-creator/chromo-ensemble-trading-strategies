@@ -41,18 +41,18 @@ The pipeline is designed for researchers, quantitative analysts, and algorithmic
 
 ## Project Structure
 
-.
-├── data/                     # CSV datasets, tuning results, saved parameters
-├── models/                   # Model architecture scripts for MLP, CNN, LSTM, Transformer
-├── scripts/                  # Python scripts for training, evaluation, and backtesting
-├── optimized_models/         # Trained model weight files (.pth)
-├── plots/                    # Generated figures and result plots
-├── utils.py                  # Utility functions for backtesting, metrics, plotting
-├── notebook.ipynb            # Main project notebook
-├── requirements.txt          # Python package dependencies
-├── LICENSE                   # Project license
-├── .gitignore                # Git ignore file
-└── README.md                 # Project documentation
+
+- data/                     # CSV datasets, tuning results, saved parameters
+- models/                   # Model architecture scripts for MLP, CNN, LSTM, Transformer
+- scripts/                  # Python scripts for training, evaluation, and backtesting
+- optimized_models/         # Trained model weight files (.pth)
+- plots/                    # Generated figures and result plots
+- utils.py                  # Utility functions for backtesting, metrics, plotting
+- notebook.ipynb            # Main project notebook
+- requirements.txt          # Python package dependencies
+- LICENSE                   # Project license
+- .gitignore                # Git ignore file
+- README.md                 # Project documentation
 
 
 ---
