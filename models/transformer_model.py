@@ -33,15 +33,15 @@ class TransformerClassifier(nn.Module):
         super(TransformerClassifier, self).__init__()
         self.embedding = nn.Linear(input_size, dim_model)
         self.positional_encoding = nn.Parameter(torch.randn(window_size, dim_model))
-        encoder_layer = nn.TransformerEncoderLayer(d_model=dim_model, nhead=num_heads)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=dim_model, nhead=num_heads, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.fc = nn.Linear(dim_model, num_classes)
 
     def forward(self, x):
         x = self.embedding(x) + self.positional_encoding  # [batch, seq_len, dim_model]
-        x = x.permute(1, 0, 2)  # transformer expects [seq_len, batch, dim_model]
+        # x = x.permute(1, 0, 2)  # transformer expects [seq_len, batch, dim_model]
         x = self.transformer_encoder(x)
-        x = x.mean(dim=0)  # global average pooling over sequence
+        x = x.mean(dim=1)  # global average pooling over sequence
         x = self.fc(x)
         return x
 

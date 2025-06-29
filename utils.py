@@ -4,6 +4,8 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Union, Sequence
+
 import seaborn as sns
 import yfinance as yf
 import torch.nn.functional as F
@@ -226,65 +228,41 @@ def backtest_strategy(df, predictions):
 
     return results, portfolio, trade_returns
 
-def plot_prediction_signals(df, predictions, title="Prediction Signals with PnL", save_path=None):
+def plot_prediction_signals_dynamic(df, executed_trades, title="Prediction Signals with PnL", save_path=None, initial_capital=10000):
     """
-    Plots buy/sell/hold signals on price and calculates cumulative PnL.
+    Plots buy/sell signals on price using executed trades for exact alignment with backtest.
 
     Args:
         df (pd.DataFrame): DataFrame containing 'Close' prices.
-        predictions (array-like): Predicted labels (0=Hold, 1=Buy, 2=Sell).
+        executed_trades (dict): Dict containing 'buy_indices', 'buy_prices', 'sell_indices', 'sell_prices', 'capital_series'.
         title (str): Plot title.
         save_path (str): If provided, saves plot to this path.
+        initial_capital (float): Starting portfolio capital.
+
+    Returns:
+        compounded_return (float): Final portfolio return relative to initial capital.
     """
     prices = df['Close'].values
-    position = 0
-    entry_price = None
-    trade_pnls = []
-    position_series = []
+    capital_series = executed_trades['capital_series']
+    buy_indices = executed_trades['buy_indices']
+    buy_prices = executed_trades['buy_prices']
+    sell_indices = executed_trades['sell_indices']
+    sell_prices = executed_trades['sell_prices']
 
-    buy_signals = []
-    sell_signals = []
-
-    for i in range(len(predictions)):
-        pred = predictions[i]
-        price = prices[i]
-
-        if pred == 1 and position == 0:
-            position = 1
-            entry_price = price
-            buy_signals.append((i, price))
-        elif pred == 2 and position == 1:
-            position = 0
-            pnl = (price - entry_price) / entry_price
-            trade_pnls.append(pnl)
-            sell_signals.append((i, price))
-            entry_price = None
-
-        position_series.append(position)
-
-    # Calculate cumulative PnL
-    cumulative_pnl = [0]
-    total_pnl = 0
-    for pnl in trade_pnls:
-        total_pnl += pnl
-        cumulative_pnl.append(total_pnl)
+    # Calculate compounded return
+    compounded_return = (capital_series[-1] / initial_capital) - 1 if capital_series else 0.0
 
     # Plotting
     plt.figure(figsize=(12, 6))
     plt.plot(df.index, prices, label='Price', color='black')
 
-    # Plot buy signals
-    if buy_signals:
-        buy_indices, buy_prices = zip(*buy_signals)
-        buy_indices = list(buy_indices)  # ✅ convert to list
+    if buy_indices:
         plt.scatter(df.index[buy_indices], buy_prices, marker='^', color='green', label='Buy Signal')
 
-    if sell_signals:
-        sell_indices, sell_prices = zip(*sell_signals)
-        sell_indices = list(sell_indices)  # ✅ convert to list
+    if sell_indices:
         plt.scatter(df.index[sell_indices], sell_prices, marker='v', color='red', label='Sell Signal')
 
-    plt.title(f"{title} | Total PnL: {total_pnl:.2%}")
+    plt.title(f"{title} | Portfolio Return: {compounded_return:.2%}")
     plt.xlabel("Time")
     plt.ylabel("Price")
     plt.legend()
@@ -296,9 +274,200 @@ def plot_prediction_signals(df, predictions, title="Prediction Signals with PnL"
     else:
         plt.show()
 
-    return trade_pnls, total_pnl
+    return compounded_return
 
-def backtest_strategy_with_position_stoploss(df, predictions, position_size=0.25, stop_loss=0.05, take_profit=0.10):
+def plot_prediction_signals(df, predictions, title="Prediction Signals with PnL", save_path=None, initial_capital=10000):
+    """
+    Plots buy/sell/hold signals on price and calculates cumulative PnL and portfolio return.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing 'Close' prices.
+        predictions (array-like): Predicted labels (0=Hold, 1=Buy, 2=Sell).
+        title (str): Plot title.
+        save_path (str): If provided, saves plot to this path.
+        initial_capital (float): Starting portfolio capital.
+    """
+    prices = df['Close'].values
+    position = 0
+    entry_price = None
+    trade_pnls = []
+    portfolio = initial_capital
+    capital_series = []
+
+    buy_signals = []
+    sell_signals = []
+
+    for i in range(len(predictions)):
+        pred = predictions[i]
+        price = prices[i]
+
+        if pred == 1 and position == 0:
+            position = portfolio / price  # buy with full portfolio value
+            entry_price = price
+            buy_signals.append((i, price))
+            portfolio = 0  # fully invested
+
+        elif pred == 2 and position > 0:
+            portfolio = position * price  # sell and convert back to cash
+            pnl = (price - entry_price) / entry_price
+            trade_pnls.append(pnl)
+            sell_signals.append((i, price))
+            position = 0
+            entry_price = None
+
+        # Calculate portfolio value at each step
+        total_value = portfolio if position == 0 else position * price
+        capital_series.append(total_value)
+
+    # Close open position at the end if any
+    if position > 0:
+        portfolio = position * prices[-1]
+        pnl = (prices[-1] - entry_price) / entry_price
+        trade_pnls.append(pnl)
+        position = 0
+
+    # Calculate metrics
+    total_pnl = sum(trade_pnls)
+    compounded_return = (capital_series[-1] / initial_capital) - 1
+
+    # Plotting
+    plt.figure(figsize=(12, 6))
+    plt.plot(df.index, prices, label='Price', color='black')
+
+    if buy_signals:
+        buy_indices, buy_prices = zip(*buy_signals)
+        buy_indices = list(buy_indices)
+        plt.scatter(df.index[buy_indices], buy_prices, marker='^', color='green', label='Buy Signal')
+
+    if sell_signals:
+        sell_indices, sell_prices = zip(*sell_signals)
+        sell_indices = list(sell_indices)
+        plt.scatter(df.index[sell_indices], sell_prices, marker='v', color='red', label='Sell Signal')
+
+    plt.title(f"{title} | Summed PnL: {total_pnl:.2%} | Portfolio Return: {compounded_return:.2%}")
+    plt.xlabel("Time")
+    plt.ylabel("Price")
+    plt.legend()
+    plt.grid(True)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+        print(f"Prediction signal plot saved to {save_path}")
+    else:
+        plt.show()
+
+    return trade_pnls, total_pnl, compounded_return
+
+def plot_prediction_signals_kelly(
+    df,
+    predictions,
+    title="Prediction Signals with Kelly Sizing",
+    save_path=None,
+    initial_capital=10000,
+    kelly_fraction: Union[float, Sequence[float], np.ndarray] = 0.1
+):
+    """
+    Plots buy/sell/hold signals on price and calculates portfolio return with Kelly position sizing.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing 'Close' prices.
+        predictions (array-like): Predicted labels (0=Hold, 1=Buy, 2=Sell).
+        title (str): Plot title.
+        save_path (str): If provided, saves plot to this path.
+        initial_capital (float): Starting portfolio capital.
+        kelly_fraction (float or array-like): Kelly position size fraction (0-1). Can be scalar or precomputed array per trade.
+
+    Returns:
+        trade_pnls (list): List of individual trade returns.
+        summed_pnl (float): Sum of trade returns.
+        portfolio_return (float): Total portfolio return relative to initial capital.
+    """
+    prices = df['Close'].values
+    capital = initial_capital
+    position = 0
+    entry_price = None
+    trade_pnls = []
+    capital_series = []
+
+    buy_signals = []
+    sell_signals = []
+
+    # Convert kelly_fraction to np.array for indexing consistency
+    if not isinstance(kelly_fraction, (list, tuple, np.ndarray)):
+        kelly_fraction = np.full(len(predictions), kelly_fraction)
+    else:
+        kelly_fraction = np.array(kelly_fraction)
+
+    # Check length consistency
+    if len(kelly_fraction) != len(predictions):
+        raise ValueError(f"kelly_fraction length {len(kelly_fraction)} does not match predictions length {len(predictions)}")
+
+    for i in range(len(predictions)):
+        pred = predictions[i]
+        price = prices[i]
+        kelly_size = kelly_fraction[i]
+
+        # Buy
+        if pred == 1 and position == 0:
+            alloc = capital * kelly_size
+            position = alloc / price
+            entry_price = price
+            capital -= alloc
+            buy_signals.append((i, price))
+
+        # Sell
+        elif pred == 2 and position > 0:
+            proceeds = position * price
+            pnl = (price - entry_price) / entry_price
+            trade_pnls.append(pnl)
+            capital += proceeds
+            position = 0
+            entry_price = None
+            sell_signals.append((i, price))
+
+        # Update portfolio value
+        total_value = capital if position == 0 else capital + position * price
+        capital_series.append(total_value)
+
+    # Close any open position at the end
+    if position > 0:
+        proceeds = position * prices[-1]
+        pnl = (prices[-1] - entry_price) / entry_price
+        trade_pnls.append(pnl)
+        capital += proceeds
+        position = 0
+
+    # Calculate metrics
+    summed_pnl = sum(trade_pnls)
+    portfolio_return = (capital_series[-1] / initial_capital) - 1 if capital_series else 0.0
+
+    # Plotting
+    plt.figure(figsize=(12, 6))
+    plt.plot(df.index, prices, label='Price', color='black')
+
+    if buy_signals:
+        buy_indices, buy_prices = zip(*buy_signals)
+        plt.scatter(df.index[list(buy_indices)], buy_prices, marker='^', color='green', label='Buy Signal')
+
+    if sell_signals:
+        sell_indices, sell_prices = zip(*sell_signals)
+        plt.scatter(df.index[list(sell_indices)], sell_prices, marker='v', color='red', label='Sell Signal')
+
+    plt.title(f"{title} | Summed PnL: {summed_pnl:.2%} | Portfolio Return: {portfolio_return:.2%}")
+    plt.xlabel("Time")
+    plt.ylabel("Price")
+    plt.legend()
+    plt.grid(True)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+        print(f"Prediction signal plot saved to {save_path}")
+    else:
+        plt.show()
+
+    return trade_pnls, summed_pnl, portfolio_return
+
+def backtest_strategy_with_position_stoploss(df, predictions, position_size: float = 1, stop_loss: float = 1, take_profit: float = 1000, return_executed_trades=False):
     """
     Backtest strategy with position sizing and stop-loss/take-profit.
 
@@ -306,19 +475,26 @@ def backtest_strategy_with_position_stoploss(df, predictions, position_size=0.25
         df (pd.DataFrame): Data with 'Close' prices.
         predictions (array-like): Predicted labels.
         position_size (float): Fraction of capital per trade (e.g. 0.25 for 25%).
-        stop_loss (float): Stop-loss threshold as decimal (e.g. 0.05 for 5% loss).
-        take_profit (float): Take-profit threshold as decimal (e.g. 0.10 for 10% profit).
+        stop_loss (float): Stop-loss threshold as decimal.
+        take_profit (float): Take-profit threshold as decimal.
+        return_executed_trades (bool): Whether to return executed trades dict for plotting.
 
     Returns:
         results (dict): Performance metrics.
         portfolio (pd.Series): Equity curve.
         trade_returns (list): List of trade PnLs.
+        executed_trades (dict, optional): Dict with buy/sell indices and prices, capital_series.
     """
     capital = 10000
     position = 0
     entry_price = None
     trade_pnls = []
     capital_series = []
+
+    buy_indices = []
+    buy_prices = []
+    sell_indices = []
+    sell_prices = []
 
     for i in range(len(predictions)):
         pred = predictions[i]
@@ -330,6 +506,8 @@ def backtest_strategy_with_position_stoploss(df, predictions, position_size=0.25
             if pnl <= -stop_loss or pnl >= take_profit:
                 capital += position * price
                 trade_pnls.append(pnl)
+                sell_indices.append(i)
+                sell_prices.append(price)
                 position = 0
                 entry_price = None
 
@@ -339,12 +517,16 @@ def backtest_strategy_with_position_stoploss(df, predictions, position_size=0.25
             position = alloc / price
             capital -= alloc
             entry_price = price
+            buy_indices.append(i)
+            buy_prices.append(price)
 
         # Sell signal
         elif pred == 2 and position > 0:
             pnl = (price - entry_price) / entry_price
             capital += position * price
             trade_pnls.append(pnl)
+            sell_indices.append(i)
+            sell_prices.append(price)
             position = 0
             entry_price = None
 
@@ -358,6 +540,8 @@ def backtest_strategy_with_position_stoploss(df, predictions, position_size=0.25
         pnl = (price - entry_price) / entry_price
         capital += position * price
         trade_pnls.append(pnl)
+        sell_indices.append(len(df) - 1)
+        sell_prices.append(price)
 
     portfolio = pd.Series(capital_series)
     daily_returns = portfolio.pct_change().dropna()
@@ -376,7 +560,18 @@ def backtest_strategy_with_position_stoploss(df, predictions, position_size=0.25
         'max_drawdown': max_drawdown
     }
 
-    return results, portfolio, trade_pnls
+    # Return executed trades dict if requested
+    if return_executed_trades:
+        executed_trades = {
+            'buy_indices': buy_indices,
+            'buy_prices': buy_prices,
+            'sell_indices': sell_indices,
+            'sell_prices': sell_prices,
+            'capital_series': capital_series
+        }
+        return results, portfolio, trade_pnls, executed_trades
+    else:
+        return results, portfolio, trade_pnls, None
 
 def backtest_strategy_with_dynamic_position(df, predictions, stop_loss=0.05, take_profit=0.10, vol_window=20, base_risk=0.01, max_pos_size=0.5, min_pos_size=0.01):
     """
@@ -476,7 +671,7 @@ def backtest_strategy_with_dynamic_position(df, predictions, stop_loss=0.05, tak
 
     return results, portfolio, trade_pnls
 
-def backtest_strategy_with_kelly_position(df, predictions, stop_loss=0.05, take_profit=0.10, min_pos_size=0.01, max_pos_size=0.5):
+def backtest_strategy_with_kelly_position(df, predictions, stop_loss=0.05, take_profit=0.10, min_pos_size=0.01, max_pos_size=0.5, return_kelly_fraction=False):
     """
     Backtest strategy with position sizing based on Kelly criterion.
 
@@ -487,12 +682,16 @@ def backtest_strategy_with_kelly_position(df, predictions, stop_loss=0.05, take_
         take_profit (float): Take-profit threshold as decimal.
         min_pos_size (float): Minimum position size fraction.
         max_pos_size (float): Maximum position size fraction.
+        return_kelly_fraction (bool): Whether to return per-trade Kelly fractions.
 
     Returns:
         results (dict): Performance metrics.
         portfolio (pd.Series): Equity curve.
         trade_pnls (list): List of trade PnLs.
+        kelly_fractions (np.array, optional): Per-trade Kelly fractions if return_kelly_fraction=True.
     """
+    import numpy as np
+    import pandas as pd
 
     capital = 10000
     position = 0
@@ -501,6 +700,7 @@ def backtest_strategy_with_kelly_position(df, predictions, stop_loss=0.05, take_
     wins = []
     losses = []
     capital_series = []
+    kelly_fractions = []
 
     for i in range(len(predictions)):
         pred = predictions[i]
@@ -526,6 +726,8 @@ def backtest_strategy_with_kelly_position(df, predictions, stop_loss=0.05, take_
                 pos_size = max(min(float(f_star), max_pos_size), min_pos_size)
         else:
             pos_size = min_pos_size  # Default early position size
+
+        kelly_fractions.append(pos_size)  # save Kelly fraction for this trade
 
         alloc = capital * pos_size
 
@@ -592,7 +794,12 @@ def backtest_strategy_with_kelly_position(df, predictions, stop_loss=0.05, take_
         'max_drawdown': max_drawdown
     }
 
-    return results, portfolio, trade_pnls
+    kelly_fractions = np.array(kelly_fractions)
+
+    if return_kelly_fraction:
+        return results, portfolio, trade_pnls, kelly_fractions
+    else:
+        return results, portfolio, trade_pnls, None
 
 def comparative_evaluation_summary(results_list, sort_by='Sharpe Ratio', save_path=None):
     """
@@ -646,3 +853,146 @@ def weighted_ensemble_vote(votes, weights):
     max_vote = max(vote_weights.items(), key=lambda x: x[1])[0]
     
     return max_vote
+
+def calculate_additional_metrics(portfolio, trade_returns):
+    """
+    Calculates advanced trading evaluation metrics.
+
+    Args:
+        portfolio (pd.Series): Portfolio equity curve.
+        trade_returns (list or np.array): List of individual trade returns.
+
+    Returns:
+        dict: Dictionary of calculated metrics.
+    """
+    daily_returns = portfolio.pct_change().dropna()
+
+    # Maximum Drawdown
+    cumulative = portfolio.cummax()
+    drawdown = (portfolio - cumulative) / cumulative
+    max_drawdown = drawdown.min()
+
+    # Sortino Ratio (downside deviation)
+    downside_returns = daily_returns[daily_returns < 0]
+    downside_std = downside_returns.std()
+    sortino = daily_returns.mean() / downside_std * np.sqrt(252) if downside_std != 0 else np.nan
+
+    # Calmar Ratio (annual return / max drawdown)
+    total_return = (portfolio.iloc[-1] / portfolio.iloc[0]) - 1
+    ann_return = (1 + total_return) ** (252 / len(portfolio)) - 1
+    calmar = ann_return / abs(max_drawdown) if max_drawdown != 0 else np.nan
+
+    # Omega Ratio (threshold 0)
+    gains = daily_returns[daily_returns > 0].sum()
+    losses = -daily_returns[daily_returns < 0].sum()
+    omega = gains / losses if losses != 0 else np.nan
+
+    # Gain to Pain Ratio (sum of returns / sum of absolute losses)
+    gain_to_pain = daily_returns.sum() / losses if losses != 0 else np.nan
+
+    # Consistency metrics
+    profitable_trades = len([r for r in trade_returns if r > 0])
+    total_trades = len(trade_returns)
+    win_rate = profitable_trades / total_trades if total_trades > 0 else np.nan
+    profit_factor = (sum([r for r in trade_returns if r > 0]) / -sum([r for r in trade_returns if r < 0])) if sum([r for r in trade_returns if r < 0]) != 0 else np.nan
+
+    # Longest winning and losing streaks
+    streaks = []
+    current_streak = 0
+    current_sign = None
+    for r in trade_returns:
+        sign = r > 0
+        if sign == current_sign:
+            current_streak += 1
+        else:
+            if current_streak > 0:
+                streaks.append((current_sign, current_streak))
+            current_sign = sign
+            current_streak = 1
+    if current_streak > 0:
+        streaks.append((current_sign, current_streak))
+
+    longest_win_streak = max([s[1] for s in streaks if s[0]], default=0)
+    longest_loss_streak = max([s[1] for s in streaks if not s[0]], default=0)
+
+    # Compile metrics
+    metrics = {
+        'Sortino Ratio': sortino,
+        'Calmar Ratio': calmar,
+        'Omega Ratio': omega,
+        'Max Drawdown': max_drawdown,
+        'Gain to Pain Ratio': gain_to_pain,
+        'Win Rate': win_rate,
+        'Profit Factor': profit_factor,
+        'Longest Win Streak': longest_win_streak,
+        'Longest Loss Streak': longest_loss_streak
+    }
+
+    return metrics
+
+def ensemble_comparison_summary(results_weighted_majority, results_kelly, results_prob_voting_uncon, results_prob_voting_con_min_pos, results_prob_voting_tot_con):
+    # Create a results list dynamically
+    results_list = [
+    {
+        'Ensemble Method': 'Weighted Majority Voting',
+        'Total Return': results_weighted_majority.get('total_return', None),
+        'Annualized Return': results_weighted_majority.get('annualized_return', None),
+        'Sharpe Ratio': results_weighted_majority.get('sharpe_ratio', None),
+        'Sortino Ratio': results_weighted_majority.get('sortino_ratio', None),
+        'Max Drawdown': results_weighted_majority.get('max_drawdown', None),
+        'Win Rate': results_weighted_majority.get('win_rate', None),
+        'Profit Factor': results_weighted_majority.get('profit_factor', None)
+    },
+    {
+        'Ensemble Method': 'Probabilistic Voting (Unconstrained)',
+        'Total Return': results_prob_voting_uncon.get('total_return', None),
+        'Annualized Return': results_prob_voting_uncon.get('annualized_return', None),
+        'Sharpe Ratio': results_prob_voting_uncon.get('sharpe_ratio', None),
+        'Sortino Ratio': results_prob_voting_uncon.get('sortino_ratio', None),
+        'Max Drawdown': results_prob_voting_uncon.get('max_drawdown', None),
+        'Win Rate': results_prob_voting_uncon.get('win_rate', None),
+        'Profit Factor': results_prob_voting_uncon.get('profit_factor', None)
+    },
+    {
+        'Ensemble Method': 'Probabilistic Voting (Constrained, Min Pos)',
+        'Total Return': results_prob_voting_con_min_pos.get('total_return', None),
+        'Annualized Return': results_prob_voting_con_min_pos.get('annualized_return', None),
+        'Sharpe Ratio': results_prob_voting_con_min_pos.get('sharpe_ratio', None),
+        'Sortino Ratio': results_prob_voting_con_min_pos.get('sortino_ratio', None),
+        'Max Drawdown': results_prob_voting_con_min_pos.get('max_drawdown', None),
+        'Win Rate': results_prob_voting_con_min_pos.get('win_rate', None),
+        'Profit Factor': results_prob_voting_con_min_pos.get('profit_factor', None)
+    },
+    {
+        'Ensemble Method': 'Probabilistic Voting (Totally Constrained)',
+        'Total Return': results_prob_voting_tot_con.get('total_return', None),
+        'Annualized Return': results_prob_voting_tot_con.get('annualized_return', None),
+        'Sharpe Ratio': results_prob_voting_tot_con.get('sharpe_ratio', None),
+        'Sortino Ratio': results_prob_voting_tot_con.get('sortino_ratio', None),
+        'Max Drawdown': results_prob_voting_tot_con.get('max_drawdown', None),
+        'Win Rate': results_prob_voting_tot_con.get('win_rate', None),
+        'Profit Factor': results_prob_voting_tot_con.get('profit_factor', None)
+    },
+    {
+        'Ensemble Method': 'Probabilistic Voting + Kelly Sizing',
+        'Total Return': results_kelly.get('total_return', None),
+        'Annualized Return': results_kelly.get('annualized_return', None),
+        'Sharpe Ratio': results_kelly.get('sharpe_ratio', None),
+        'Sortino Ratio': results_kelly.get('sortino_ratio', None),
+        'Max Drawdown': results_kelly.get('max_drawdown', None),
+        'Win Rate': results_kelly.get('win_rate', None),
+        'Profit Factor': results_kelly.get('profit_factor', None)
+    }
+    ]
+
+    # Convert to DataFrame
+    results_df = pd.DataFrame(results_list)
+
+    # Display neatly
+    pd.set_option('display.precision', 4)
+    print("\n=== Ensemble Model Comparison ===")
+    print(results_df.to_string(index=False))
+
+    return results_df
+
+

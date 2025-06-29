@@ -70,8 +70,6 @@ def evaluate_fitness(chromosome, df):
         'fitness': fitness
     }
 
-# ga_loop.py
-
 def tournament_selection(population, fitnesses, TOURNAMENT_SIZE):
     """
     Tournament selection of a parent.
@@ -104,10 +102,11 @@ def mutate(chromosome, MUTATION_PROB):
                 chromosome[i] = random.randint(5, 20)
     return chromosome
 
-def genetic_algorithm(df, POP_SIZE=50, MAX_GENERATIONS=50, ELITISM_COUNT=2, TOURNAMENT_SIZE=3, CROSSOVER_PROB=0.7, MUTATION_PROB=0.001, STAGNATION_LIMIT=10):
+def genetic_algorithm(ticker, POP_SIZE=50, MAX_GENERATIONS=50, ELITISM_COUNT=2, TOURNAMENT_SIZE=3, CROSSOVER_PROB=0.7, MUTATION_PROB=0.001, STAGNATION_LIMIT=10, override_selection_metric=None):
     """
     Full GA loop with early stopping on stagnation.
     """
+    df = pd.read_csv(f'data/{ticker}_technical_indicators.csv')
     population = initialize_population(POP_SIZE)
     best_fitness_history = []
     stagnation_counter = 0
@@ -146,7 +145,7 @@ def genetic_algorithm(df, POP_SIZE=50, MAX_GENERATIONS=50, ELITISM_COUNT=2, TOUR
 
         population = new_population
 
-    # Final evaluation and saving (unchanged)
+    # Final evaluation
     final_fitnesses = [evaluate_fitness(chromo, df) for chromo in population]
     results_df = pd.DataFrame([{
         'chromosome': f['chromosome'],
@@ -158,9 +157,20 @@ def genetic_algorithm(df, POP_SIZE=50, MAX_GENERATIONS=50, ELITISM_COUNT=2, TOUR
         'fitness': f['fitness']
     } for f in final_fitnesses])
 
+    # Expand chromosome genes
     chromo_df = pd.DataFrame(results_df['chromosome'].tolist(),
-                             columns=['down_buy_val', 'down_buy_int', 'down_sell_val', 'down_sell_int',
-                                      'up_buy_val', 'up_buy_int', 'up_sell_val', 'up_sell_int'])
+                            columns=['down_buy_val', 'down_buy_int', 'down_sell_val', 'down_sell_int',
+                                    'up_buy_val', 'up_buy_int', 'up_sell_val', 'up_sell_int'])
     final_df = pd.concat([chromo_df, results_df.drop(columns=['chromosome'])], axis=1)
+
+    # If override_selection_metric is provided, use it for selection
+    if override_selection_metric and override_selection_metric in final_df.columns:
+        final_df.sort_values(override_selection_metric, ascending=False, inplace=True)
+        print(f"\nOverride selection applied. Sorted by {override_selection_metric} descending.")
+    else:
+        # Default sorting by fitness
+        final_df.sort_values('fitness', ascending=False, inplace=True)
+
+    # Save results
     final_df.to_csv('data/GA_final_results.csv', index=False)
     print("\nFinal results saved to GA_final_results.csv")
