@@ -31,7 +31,7 @@ def run_ensemble_backtest(
     cnn_model_path='optimized_models/trained_cnn_best_tuned.pth',
     lstm_model_path='optimized_models/trained_lstm_best_tuned.pth',
     transformer_model_path='optimized_models/trained_transformer_best_config.pth',
-    plot_path="plots/ensemble_transformer_prediction_signals.png"
+    plot_path="plots/ensemble_weighted_voting_prediction_signals.png"
 ):
     if end_date is None:
         end_date = datetime.today().strftime('%Y-%m-%d')
@@ -184,7 +184,6 @@ def run_probabilistic_ensemble_backtest(
     cnn_model_path='optimized_models/trained_cnn_best_tuned.pth',
     lstm_model_path='optimized_models/trained_lstm_best_tuned.pth',
     transformer_model_path='optimized_models/trained_transformer_best_config.pth',
-    plot_path="plots/ensemble_probabilistic_voting_signals.png"
 ):
     if end_date is None:
         end_date = datetime.today().strftime('%Y-%m-%d')
@@ -318,11 +317,9 @@ def run_probabilistic_ensemble_backtest(
         print(f"{k}: {v:.4f}")
 
     # Plot signals
-    
-    #plot_prediction_signals(df_eval, executed_trades, title="Prediction Signals with PnL", save_path=None, initial_capital=10000)
-
+    plot_path=f"plots/ensemble_probabilistic_voting_signals_positionsize_{position_size}_sl_{stop_loss}.png"
     plot_prediction_signals_dynamic(df_eval, executed_trades, title="Prediction Signals with PnL", save_path=plot_path, initial_capital=10000)
-    #plot_prediction_signals(df_eval, ensemble_predictions, title="Ensemble Probabilistic Voting Signals", save_path=plot_path)
+
 
     if any(x is None for x in [results, portfolio, trade_returns, ensemble_predictions, df_eval]):
         raise ValueError("One or more outputs from run_probabilistic_ensemble_backtest are None. Check your data and model paths.")
